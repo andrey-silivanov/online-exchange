@@ -1,0 +1,99 @@
+version: '3'
+
+services:
+  ox_mysql:
+    image: 'mysql:8.0'
+    ports:
+      - '${FORWARD_DB_PORT:-3306}:3306'
+    environment:
+      MYSQL_ROOT_PASSWORD: '${DB_PASSWORD}'
+      MYSQL_DATABASE: '${DB_DATABASE}'
+      MYSQL_USER: '${DB_USERNAME}'
+      MYSQL_PASSWORD: '${DB_PASSWORD}'
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+    volumes:
+      - ./docker_confs/docker_volumes/mysql:/var/lib/mysql
+    networks:
+      - ox
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping" ]
+
+  ox_php:
+    container_name: ox_php
+    build: docker_confs/php8
+    volumes:
+      - ${APP_PATH}:/code
+      - ${APP_PATH}/var/log:/code/var/log
+      - ~/.ssh/:/root/.ssh/
+    links:
+      - ox_mysql
+    environment:
+      PHP_IDE_CONFIG: "serverName=Docker"
+    networks:
+      - ox
+
+  ox_nginx:
+    image: nginx:latest
+    container_name: ox_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ${APP_PATH}:/code
+      - ./docker_confs/nginx/ox.conf:/etc/nginx/conf.d/ero.conf
+    links:
+      - ox_php
+    networks:
+      - ox
+
+  ox_redis:
+    container_name: 'ox_redis'
+    image: "redis:latest"
+    ports:
+      - "6379:6379"
+
+    # cassandra:
+    #     build: docker_confs/builds/cassandra/.
+    #     #image: cassandra:latest
+    #     container_name: 'rt_cassandra'
+    #     volumes:
+    #         - ./docker_confs/builds/cassandra/cassandra_scheme_docker.cql:/data/configs.cql
+    #         - ./docker_confs/docker_volumes/cassandra:/var/lib/cassandra
+
+  ox_elasticsearch:
+    container_name: 'ox_elastic'
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.16.1
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms1024m -Xmx1024m"
+      - node.name=ox
+    volumes:
+      - ./docker_confs/docker_volumes/elasticsearch:/usr/share/elasticsearch/data
+    networks:
+      - ox
+    ports:
+      - "19202:9200"
+
+  ox_cerebro:
+    image: yannart/cerebro:latest
+    ports:
+      - "10003:9000"
+    depends_on:
+      - ox_elasticsearch
+    networks:
+      - ox
+    volumes:
+      - ./docker_confs/cerebro/cerebro.conf:/cerebro/cerebro-0.4.0/conf/application.conf
+
+  # rabbitmq:
+  #     container_name: 'rt_rabbitmq'
+  #     image: rabbitmq:3.6.1-management
+  #     networks:
+  #         - default
+  #     ports:
+  #         - 5672
+  #         - "15673:15672"
+networks:
+  ox:
+    driver: bridge
