@@ -78,7 +78,7 @@ services:
   ox_cerebro:
     image: yannart/cerebro:latest
     ports:
-      - "10003:90000"
+      - "10003:9000"
     depends_on:
       - ox_elasticsearch
     networks:
